@@ -85,22 +85,29 @@ minesweeper/
     ```
 
 2.  **빌드 명령어 실행**
-    프로젝트의 최상위 폴더(`minesweeper/`)에서 다음 명령어를 실행합니다. 이 명령어는 `assets` 폴더를 데이터로 포함하여 하나의 실행 파일을 만듭니다.
+    **`minesweeper` 폴더 안에서** 다음 명령어를 실행합니다. 이 명령어는 `assets` 폴더와 `src` 폴더 내의 모든 파이썬 코드를 포함하여 하나의 실행 파일을 만듭니다.
 
     ```bash
-    pyinstaller --name Minesweeper --onefile --windowed --add-data "assets;assets" src/main.py
+    # Windows, venv 사용 시:
+    ..\venv\Scripts\python.exe -m PyInstaller --name Minesweeper --onefile --windowed --add-data "assets;assets" -p src src/main.py
+
+    # 또는 venv를 사용하지 않거나 PATH가 올바르게 설정된 경우:
+    pyinstaller --name Minesweeper --onefile --windowed --add-data "assets;assets" -p src src/main.py
     ```
+    -   `..\venv\Scripts\python.exe -m PyInstaller`: 가상환경의 파이썬으로 PyInstaller 모듈을 실행하여, `PATH` 문제 없이 안정적으로 빌드합니다.
     -   `--name Minesweeper`: 생성될 exe 파일의 이름을 지정합니다.
     -   `--onefile`: 모든 파일을 하나의 `.exe` 파일로 묶습니다.
     -   `--windowed`: 실행 시 뒤에 콘솔 창이 뜨지 않도록 합니다.
-    -   `--add-data "assets;assets"`: `assets` 폴더 전체를 빌드 결과물에 포함시킵니다. `(원본;대상)` 형식이며, Windows에서는 구분자로 `;`를 사용합니다.
+    -   `--add-data "assets;assets"`: `assets` 폴더 전체를 빌드 결과물에 포함시킵니다.
+    -   `-p src`: `src` 폴더를 코드 검색 경로에 추가하여 `game`, `board` 등의 모듈을 찾을 수 있게 합니다. (매우 중요)
 
 3.  **결과물 확인**
     -   빌드가 성공적으로 완료되면 `dist` 폴더가 생성됩니다.
-    -   `dist/Minesweeper.exe` 파일을 실행하면 게임이 시작됩니다.
+    -   `dist\Minesweeper.exe` 파일을 실행하면 게임이 시작됩니다.
 
 4.  **흔한 문제 해결**
-    -   **"file not found" 에러**: `.exe` 실행 시 폰트나 이미지를 찾을 수 없다는 에러가 발생하면, `--add-data` 경로가 올바른지, 빌드 명령어를 프로젝트 최상위 폴더에서 실행했는지 확인하세요. `sys._MEIPASS`를 이용한 경로 설정 코드가 `main.py`에 포함되어 있어 대부분의 경로 문제를 해결합니다.
+    -   **`ModuleNotFoundError`**: `.exe` 실행 시 `game`, `board` 등을 찾을 수 없다는 에러가 발생하면, 빌드 명령어에 `-p src` 옵션이 포함되었는지 확인하세요.
+    -   **`FileNotFoundError`**: `.exe` 실행 시 폰트나 이미지를 찾을 수 없다는 에러가 발생하면, `--add-data "assets;assets"` 경로가 올바른지 확인하세요.
     -   **백신 오진**: PyInstaller로 만든 `.exe` 파일은 일부 백신 프로그램에서 오진할 수 있습니다. 이는 알려진 이슈로, 신뢰하는 소스에서 직접 빌드했다면 안전합니다.
 
 ---

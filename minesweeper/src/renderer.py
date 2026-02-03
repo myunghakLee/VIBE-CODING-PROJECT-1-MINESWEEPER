@@ -3,19 +3,29 @@ from constants import *
 
 class Renderer:
     """모든 그리기 작업을 처리하는 클래스."""
-    def __init__(self, screen, font, assets):
+    def __init__(self, screen, font, assets, font_path):
         self.screen = screen
         self.font = font
         self.assets = assets
+        self.font_path = font_path
         self.tile_size = TILE_SIZE_DEFAULT
-        self.number_font = pygame.font.Font(self.font.get_name(), self.tile_size - 4)
+        try:
+            self.number_font = pygame.font.Font(self.font_path, self.tile_size - 4)
+        except FileNotFoundError:
+            self.number_font = pygame.font.Font(None, self.tile_size - 4)
 
     def update_font_size(self):
-        self.number_font = pygame.font.Font(self.font.get_name(), int(self.tile_size * 0.75))
+        try:
+            self.number_font = pygame.font.Font(self.font_path, int(self.tile_size * 0.75))
+        except FileNotFoundError:
+            self.number_font = pygame.font.Font(None, int(self.tile_size * 0.75))
 
     def draw_menu(self, ui_elements):
         self.screen.fill(COLOR_DARK_GRAY)
-        title_font = pygame.font.Font(self.font.get_name(), 64)
+        try:
+            title_font = pygame.font.Font(self.font_path, 64)
+        except FileNotFoundError:
+            title_font = pygame.font.Font(None, 64)
         title_surf = title_font.render("Minesweeper", True, COLOR_WHITE)
         title_rect = title_surf.get_rect(center=(SCREEN_WIDTH / 2, 100))
         self.screen.blit(title_surf, title_rect)
@@ -62,8 +72,15 @@ class Renderer:
 
             if cell.is_revealed:
                 if cell.is_mine:
-                    pygame.draw.rect(self.screen, COLOR_RED, rect)
-                    self.screen.blit(self.assets['mine_img_scaled'], rect.topleft)
+                    exploded_pos = board.exploded_mine_pos
+                    if exploded_pos and (cell.x, cell.y) == exploded_pos:
+                        # This is the one that was clicked
+                        pygame.draw.rect(self.screen, COLOR_RED, rect)
+                        self.screen.blit(self.assets['mine_bomb_img_scaled'], rect.topleft)
+                    else:
+                        # This is another mine revealed at game over
+                        pygame.draw.rect(self.screen, COLOR_REVEALED, rect)
+                        self.screen.blit(self.assets['mine_img_scaled'], rect.topleft)
                 else:
                     # 인접 지뢰 0인 내부 칸과 숫자가 있는 경계 칸 색상 구분
                     is_inner = True
@@ -86,7 +103,17 @@ class Renderer:
                         num_surf = self.number_font.render(str(cell.adjacent_mines), True, NUMBER_COLORS[cell.adjacent_mines])
                         num_rect = num_surf.get_rect(center=rect.center)
                         self.screen.blit(num_surf, num_rect)
-            else:
+            elif board.game_over: # Game is over, show hidden mines and incorrect flags
+                if cell.is_mine and not cell.is_flagged: # Unrevealed mine, not flagged (so show it)
+                    pygame.draw.rect(self.screen, COLOR_REVEALED, rect)
+                    self.screen.blit(self.assets['mine_img_scaled'], rect.topleft)
+                elif cell.is_flagged and not cell.is_mine: # Incorrectly flagged
+                    pygame.draw.rect(self.screen, COLOR_INCORRECT_FLAG, rect)
+                    self.screen.blit(self.assets['flag_img_scaled'], rect.topleft)
+                elif cell.is_flagged and cell.is_mine: # Correctly flagged mine
+                    pygame.draw.rect(self.screen, COLOR_REVEALED, rect) # Background for correctly flagged
+                    self.screen.blit(self.assets['flag_img_scaled'], rect.topleft)
+            else: # Not revealed and game not over
                 pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, rect)
                 if cell.is_flagged:
                     self.screen.blit(self.assets['flag_img_scaled'], rect.topleft)
@@ -126,7 +153,10 @@ class Renderer:
             self.screen.blit(overlay, (0, 0))
             
             msg = "You Win!" if game_state['win'] else "Game Over"
-            msg_font = pygame.font.Font(self.font.get_name(), 72)
+            try:
+                msg_font = pygame.font.Font(self.font_path, 72)
+            except FileNotFoundError:
+                msg_font = pygame.font.Font(None, 72)
             msg_surf = msg_font.render(msg, True, COLOR_WHITE)
             msg_rect = msg_surf.get_rect(center=(SCREEN_WIDTH / 2, (SCREEN_HEIGHT - UI_PANEL_HEIGHT) / 2))
             self.screen.blit(msg_surf, msg_rect)

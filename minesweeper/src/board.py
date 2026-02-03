@@ -25,16 +25,18 @@ class Board:
 
 class BoardFinite(Board):
     """유한 크기 보드 클래스."""
-    def __init__(self, width, height, mine_count):
+    def __init__(self, width, height, mine_count, solvable=True):
         super().__init__()
         self.width = width
         self.height = height
         self.mine_count = mine_count
+        self.solvable = solvable
         self.cells = [[Cell(x, y) for x in range(width)] for y in range(height)]
         self.is_generated = False
         self.revealed_count = 0
         self.flag_count = 0
         self.total_safe_cells = width * height - mine_count
+        self.exploded_mine_pos = None
 
     def get_cell(self, x, y):
         if 0 <= x < self.width and 0 <= y < self.height:
@@ -53,7 +55,33 @@ class BoardFinite(Board):
         return neighbors
 
     def generate(self, first_click_x, first_click_y):
-        """첫 클릭 후 지뢰를 배치하고 인접 지뢰 수를 계산합니다."""
+        """보드 생성 로직을 제어합니다. solvable 플래그에 따라 '추측 없는' 보드 생성을 시도합니다."""
+        if not self.solvable:
+            self._generate_standard_board(first_click_x, first_click_y)
+            self.is_generated = True
+            return
+
+        # '추측 없는' 보드 생성 시도
+        max_attempts = 100  # 무한 루프 방지
+        print("Generating a solvable board... this may take a moment.")
+        for i in range(max_attempts):
+            self._generate_standard_board(first_click_x, first_click_y)
+            if self._is_solvable(first_click_x, first_click_y):
+                print(f"Solvable board found after {i + 1} attempt(s).")
+                self.is_generated = True
+                return
+        
+        print(f"Warning: Failed to generate a solvable board after {max_attempts} attempts. The board may require guessing.")
+        self.is_generated = True
+
+    def _generate_standard_board(self, first_click_x, first_click_y):
+        """(내부용) 첫 클릭 후 지뢰를 무작위로 배치하고 인접 지뢰 수를 계산합니다."""
+        # 보드 초기화
+        self.cells = [[Cell(x, y) for x in range(self.width)] for y in range(self.height)]
+        self.revealed_count = 0
+        self.flag_count = 0
+        self.exploded_mine_pos = None
+
         safe_zone = set()
         for dy in range(-1, 2):
             for dx in range(-1, 2):
@@ -78,8 +106,81 @@ class BoardFinite(Board):
                         if neighbor.is_mine:
                             count += 1
                     self.cells[y][x].adjacent_mines = count
+    
+    def _is_solvable(self, start_x, start_y):
+        """(내부용) 현재 보드가 논리적으로만 풀 수 있는지 검증하는 솔버입니다."""
+        # 시뮬레이션을 위한 상태 복사
+        sim_revealed = [[False for _ in range(self.width)] for _ in range(self.height)]
+        sim_flagged = [[False for _ in range(self.width)] for _ in range(self.height)]
         
-        self.is_generated = True
+        # 첫 클릭 지점 열기
+        q = deque([(start_x, start_y)])
+        revealed_count = 0
+        
+        # Flood-fill for the first click
+        while q:
+            x, y = q.popleft()
+            if sim_revealed[y][x]: continue
+            sim_revealed[y][x] = True
+            revealed_count += 1
+            if self.cells[y][x].adjacent_mines == 0:
+                for n in self.get_neighbors(x, y):
+                    if not sim_revealed[n.y][n.x]:
+                        q.append((n.x, n.y))
+
+        # 논리적 솔버 루프
+        while True:
+            made_progress = False
+            
+            for y in range(self.height):
+                for x in range(self.width):
+                    if not sim_revealed[y][x] or self.cells[y][x].adjacent_mines == 0:
+                        continue
+
+                    cell = self.cells[y][x]
+                    neighbors = self.get_neighbors(x, y)
+                    
+                    hidden_neighbors = [n for n in neighbors if not sim_revealed[n.y][n.x]]
+                    flagged_count = sum(1 for n in hidden_neighbors if sim_flagged[n.y][n.x])
+                    unknown_count = len(hidden_neighbors) - flagged_count
+
+                    if unknown_count == 0:
+                        continue
+
+                    # 규칙 1: 주변 깃발 수 == 칸의 숫자 -> 나머지 칸은 안전
+                    if cell.adjacent_mines == flagged_count:
+                        for n in hidden_neighbors:
+                            if not sim_flagged[n.y][n.x]:
+                                if sim_revealed[n.y][n.x]: continue # 이미 열렸으면 무시
+                                sim_revealed[n.y][n.x] = True
+                                revealed_count += 1
+                                made_progress = True
+                                # 0이면 주변을 또 열어야 함 (Flood fill)
+                                if self.cells[n.y][n.x].adjacent_mines == 0:
+                                    q_ff = deque([(n.x, n.y)])
+                                    visited_ff = {(n.x, n.y)}
+                                    while q_ff:
+                                        cx, cy = q_ff.popleft()
+                                        for neighbor_ff in self.get_neighbors(cx,cy):
+                                            if not sim_revealed[neighbor_ff.y][neighbor_ff.x] and (neighbor_ff.x, neighbor_ff.y) not in visited_ff:
+                                                sim_revealed[neighbor_ff.y][neighbor_ff.x] = True
+                                                revealed_count += 1
+                                                visited_ff.add((neighbor_ff.x, neighbor_ff.y))
+                                                if self.cells[neighbor_ff.y][neighbor_ff.x].adjacent_mines == 0:
+                                                    q_ff.append((neighbor_ff.x, neighbor_ff.y))
+
+                    # 규칙 2: (주변의 닫힌 칸 수) == (칸의 숫자) -> 닫힌 칸은 모두 지뢰
+                    if cell.adjacent_mines == flagged_count + unknown_count:
+                        for n in hidden_neighbors:
+                            if not sim_flagged[n.y][n.x]:
+                                sim_flagged[n.y][n.x] = True
+                                made_progress = True
+
+            if not made_progress:
+                break # 더 이상 논리적으로 진행할 수 없음
+        
+        # 모든 안전한 칸이 열렸는지 확인
+        return revealed_count == self.total_safe_cells
 
     def reveal_cell(self, x, y):
         if not self.is_generated:
@@ -91,6 +192,7 @@ class BoardFinite(Board):
 
         if cell.is_mine:
             self.game_over = True
+            self.exploded_mine_pos = (x, y)
             cell.is_revealed = True
             return
 
@@ -151,6 +253,7 @@ class BoardInfinite(Board):
         self.generated_chunks = set()
         self.revealed_count = 0
         self.flag_count = 0
+        self.exploded_mine_pos = None
         # Start with an initial safe area
         self._ensure_chunk_generated(0, 0, is_initial=True)
         self.reveal_cell(0, 0)
@@ -172,6 +275,12 @@ class BoardInfinite(Board):
                 if cell:
                     neighbors.append(cell)
         return neighbors
+
+    def _ensure_surrounding_chunks(self, x, y):
+        """(x, y)를 중심으로 3x3 청크 그리드의 생성을 보장합니다."""
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                self._ensure_chunk_generated(x + dx * self.CHUNK_SIZE, y + dy * self.CHUNK_SIZE)
 
     def _ensure_chunk_generated(self, x, y, safe_center=None, is_initial=False):
         chunk_x, chunk_y = self._get_chunk_coord(x, y)
@@ -220,21 +329,19 @@ class BoardInfinite(Board):
 
 
     def reveal_cell(self, x, y):
-        # Generate chunk if it doesn't exist
-        if not self.get_cell(x,y):
-            self._ensure_chunk_generated(x,y, safe_center=(x,y))
+        # 클릭된 셀이 포함된 청크는 안전 클릭을 보장하며 먼저 생성
+        if not self.get_cell(x, y):
+            self._ensure_chunk_generated(x, y, safe_center=(x, y))
+        # 그 후 주변 청크들을 일관되게 생성
+        self._ensure_surrounding_chunks(x, y)
         
-        # Ensure neighbors are generated for correct adjacency counts
-        for dy in range(-1, 2):
-            for dx in range(-1, 2):
-                self._ensure_chunk_generated(x + dx * self.CHUNK_SIZE, y + dy * self.CHUNK_SIZE)
-
         cell = self.get_cell(x, y)
         if not cell or cell.is_revealed or cell.is_flagged:
             return
 
         if cell.is_mine:
             self.game_over = True
+            self.exploded_mine_pos = (x, y)
             cell.is_revealed = True
             return
 
@@ -252,19 +359,13 @@ class BoardInfinite(Board):
                         for dx in range(-1, 2):
                             if dx == 0 and dy == 0: continue
                             nx, ny = current_cell.x + dx, current_cell.y + dy
-                            
-                            # Ensure neighbor chunk is generated before trying to access
-                            if not self.get_cell(nx, ny):
-                                self._ensure_chunk_generated(nx, ny)
-
                             neighbor = self.get_cell(nx, ny)
                             if neighbor and neighbor not in visited:
                                 q.append(neighbor)
                                 visited.add(neighbor)
 
     def toggle_flag(self, x, y):
-        if not self.get_cell(x, y):
-            self._ensure_chunk_generated(x, y)
+        self._ensure_surrounding_chunks(x, y)
         
         cell = self.get_cell(x, y)
         if cell and cell.toggle_flag():
@@ -274,14 +375,11 @@ class BoardInfinite(Board):
                 self.flag_count -= 1
 
     def chord(self, x, y):
+        self._ensure_surrounding_chunks(x, y)
+        
         cell = self.get_cell(x, y)
         if not cell or not cell.is_revealed or cell.adjacent_mines == 0:
             return
-
-        # Generate surrounding chunks before checking neighbors
-        for dy in range(-1, 2):
-            for dx in range(-1, 2):
-                self._ensure_chunk_generated(x + dx * self.CHUNK_SIZE, y + dy * self.CHUNK_SIZE)
 
         neighbors = self.get_neighbors(x, y)
         flagged_neighbors = sum(1 for n in neighbors if n.is_flagged)

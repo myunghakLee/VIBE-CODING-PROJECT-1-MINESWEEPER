@@ -22,6 +22,7 @@ COLOR_GRID = pygame.Color(160, 160, 160)
 COLOR_RED = pygame.Color(255, 50, 50)
 COLOR_BLUE = pygame.Color(0, 0, 255)
 COLOR_GREEN = pygame.Color(0, 128, 0)
+COLOR_INCORRECT_FLAG = pygame.Color(255, 100, 100)
 
 # 숫자 색상
 NUMBER_COLORS = {
